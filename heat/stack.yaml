@@ -1,0 +1,222 @@
+heat_template_version: 2021-04-16
+
+description: >
+  Heat template to deploy WordPress on two VMs
+
+parameters:
+  flavor:
+    type: string
+    description: Flavor to use for the server
+    default: m1.small
+  image:
+    type: string
+    description: Name of the image to use for the server
+    default: Debian-12
+  ssh_key_name:
+    type: string
+    description: SSH key pair name
+
+resources:
+  private_net:
+    type: OS::Neutron::Net
+    properties:
+      name: private-net
+
+  security_group_backend:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: security-group-backend
+      description: "Security group for backend"
+      rules:
+        - protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+          remote_ip_prefix: 0.0.0.0/0
+        - protocol: tcp
+          port_range_min: 3306
+          port_range_max: 3306
+          remote_ip_prefix: 0.0.0.0/0
+
+  server_backend:
+    type: OS::Nova::Server
+    properties:
+      name: vm-backend
+      image:
+        get_param: image
+      flavor:
+        get_param: flavor
+      key_name:
+        get_param: ssh_key_name
+      security_groups:
+        - get_resource: security_group_backend
+      networks:
+        - network:
+            get_resource: private_net
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          template: |
+            #!/bin/bash
+            echo "nameserver 8.8.8.8" > /etc/resolv.conf
+            apt update -y
+            apt install -y mariadb-server
+            systemctl start mariadb
+            systemctl enable mariadb
+            mysql_secure_installation <<EOF
+
+            y
+            password
+            password
+            y
+            y
+            y
+            y
+            EOF
+            sed -i "s/^bind-address\s*=\s*127.0.0.1/bind-address = 0.0.0.0/" /etc/mysql/mariadb.conf.d/50-server.cnf
+            systemctl restart mariadb
+            mysql -e "CREATE DATABASE wordpress;"
+            mysql -e "CREATE USER 'wordpress'@'%' IDENTIFIED BY 'password';"
+            mysql -e "GRANT ALL PRIVILEGES ON wordpress.* TO 'wordpress'@'%';"
+            mysql -e "FLUSH PRIVILEGES;"
+          params:
+            password: "secretlong"
+
+  security_group_frontend:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: security-group-frontend
+      description: "Security group for frontend"
+      rules:
+        - protocol: tcp
+          port_range_min: 80
+          port_range_max: 80
+          remote_ip_prefix: 0.0.0.0/0
+        - protocol: tcp
+          port_range_min: 443
+          port_range_max: 443
+          remote_ip_prefix: 0.0.0.0/0
+        - protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+          remote_ip_prefix: 0.0.0.0/0
+
+  floating_ip_backend:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: public
+
+  floating_ip_association_backend:
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id:
+        get_resource: floating_ip_backend
+      port_id:
+        get_attr:
+          - server_backend
+          - addresses
+          - get_resource: private_net
+          - 0
+          - port
+
+  router:
+    type: OS::Neutron::Router
+    properties:
+      name: router
+      external_gateway_info:
+        network: public
+
+  private_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      name: private-subnet
+      network_id:
+        get_resource: private_net
+      cidr: 192.168.10.0/24
+      dns_nameservers:
+        - 8.8.8.8
+        - 8.8.4.4
+
+  router_interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id:
+        get_resource: router
+      subnet_id:
+        get_resource: private_subnet
+
+  load_balancer:
+    type: OS::Octavia::LoadBalancer
+    properties:
+      name: load-balancer
+      vip_subnet:
+        get_resource: private_subnet
+
+  load_balancer_listener:
+    type: OS::Octavia::Listener
+    properties:
+      protocol: HTTP
+      protocol_port: 80
+      loadbalancer:
+        get_resource: load_balancer
+
+  load_balancer_pool:
+    type: OS::Octavia::Pool
+    properties:
+      protocol: HTTP
+      lb_algorithm: ROUND_ROBIN
+      listener:
+        get_resource: load_balancer_listener
+
+  scaling_group_frontend:
+    type: OS::Heat::ResourceGroup
+    properties:
+      resource_def:
+        type: frontend-group.yaml
+        properties:
+          image:
+            get_param: image
+          flavor:
+            get_param: flavor
+          ssh_key_name:
+            get_param: ssh_key_name
+          private_net:
+            get_resource: private_net
+          private_subnet:
+            get_resource: private_subnet
+          security_group_frontend:
+            get_resource: security_group_frontend
+          load_balancer_pool_id:
+            get_resource: load_balancer_pool
+          server_backend_ip:
+            get_attr:
+              - server_backend
+              - first_address
+
+  floating_ip_frontend:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: public
+
+  floating_ip_association_frontend:
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id:
+        get_resource: floating_ip_frontend
+      port_id:
+        get_attr:
+          - load_balancer
+          - vip_port_id
+
+outputs:
+  server_frontend_ip:
+    description: The IP address of the frontend server
+    value:
+      get_attr:
+        - floating_ip_frontend
+        - floating_ip_address
+  server_backend_ip:
+    description: The IP address of the backend server
+    value:
+      get_attr:
+        - floating_ip_backend
+        - floating_ip_address

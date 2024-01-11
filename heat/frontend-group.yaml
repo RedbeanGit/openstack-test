@@ -1,0 +1,78 @@
+heat_template_version: 2021-04-16
+
+parameters:
+  image:
+    type: string
+  flavor:
+    type: string
+  ssh_key_name:
+    type: string
+  private_net:
+    type: string
+  private_subnet:
+    type: string
+  security_group_frontend:
+    type: string
+  load_balancer_pool_id:
+    type: string
+  server_backend_ip:
+    type: string
+
+resources:
+  server_frontend:
+    type: OS::Nova::Server
+    properties:
+      name: vm-frontend
+      image:
+        get_param: image
+      flavor:
+        get_param: flavor
+      key_name:
+        get_param: ssh_key_name
+      security_groups:
+        - get_param: security_group_frontend
+      networks:
+        - network:
+            get_param: private_net
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          template: |
+            #!/bin/bash
+            echo "nameserver 8.8.8.8" > /etc/resolv.conf
+            apt update -y
+            apt install -y apache2 php php-mysqlnd curl
+            systemctl start apache2
+            systemctl enable apache2
+            cd /var/www/html/
+            curl https://wordpress.org/latest.tar.gz --output latest.tar.gz
+            tar -xzf latest.tar.gz
+            cp -r wordpress/* ./
+            rm -f index.html
+            chown -R www-data:www-data ./
+
+            # Configurer WordPress
+            mv wp-config-sample.php wp-config.php
+            sed -i 's/database_name_here/wordpress/' wp-config.php
+            sed -i 's/username_here/wordpress/' wp-config.php
+            sed -i 's/password_here/DB_PASSWORD/' wp-config.php
+            sed -i 's/localhost/DB_HOST/' wp-config.php
+
+            systemctl restart apache2
+          params:
+            DB_PASSWORD: "secretlong"
+            DB_HOST:
+              get_param: server_backend_ip
+
+  pool_member:
+    type: OS::Octavia::PoolMember
+    properties:
+      pool:
+        get_param: load_balancer_pool_id
+      address:
+        get_attr:
+          - server_frontend
+          - first_address
+      protocol_port: 80
+      subnet:
+        get_param: private_subnet

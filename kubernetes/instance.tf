@@ -3,7 +3,7 @@ resource "openstack_compute_instance_v2" "master" {
   name            = "master-${count.index}"
   image_name      = var.image_name
   flavor_name     = var.flavor_name
-  key_pair        = openstack_compute_keypair_v2.ssh_key_pair
+  key_pair        = openstack_compute_keypair_v2.ssh_key_pair.name
   security_groups = [openstack_networking_secgroup_v2.security_group.name]
 
   network {
@@ -16,7 +16,7 @@ resource "openstack_compute_instance_v2" "worker" {
   name            = "worker-${count.index}"
   image_name      = var.image_name
   flavor_name     = var.flavor_name
-  key_pair        = openstack_compute_keypair_v2.ssh_key_pair
+  key_pair        = openstack_compute_keypair_v2.ssh_key_pair.name
   security_groups = [openstack_networking_secgroup_v2.security_group.name]
 
   network {

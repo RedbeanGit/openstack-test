@@ -1,6 +1,7 @@
 variable "ssh_key_name" {
   description = "The name of the SSH key pair to use"
   type        = string
+  default     = "~/.ssh/id_rsa.pub"
 }
 
 variable "image_name" {

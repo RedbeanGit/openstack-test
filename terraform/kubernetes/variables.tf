@@ -31,5 +31,5 @@ variable "nb_master" {
 variable "nb_worker" {
   description = "The number of worker nodes"
   type        = number
-  default     = 1
+  default     = 2
 }

@@ -15,9 +15,14 @@ $ openstack stack create -t heat/stack.yaml my-stack --parameter "ssh_key_name=m
 
 # Deploy using Terraform
 
+This repository provides 2 examples of Terraform configuration:
+
+- `terraform/simple-vm`: a simple VM with a floating IP
+- `terraform/kubernetes`: a Kubernetes cluster with 1 master and 2 workers
+
 ```
 $ cp example.env .env
 # Edit .env
 $ source .env
-$ cd terraform && terraform init && terraform apply
+$ cd terraform/kubernetes && terraform init && terraform apply
 ```

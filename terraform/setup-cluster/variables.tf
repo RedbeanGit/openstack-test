@@ -33,3 +33,15 @@ variable "nb_worker" {
   type        = number
   default     = 2
 }
+
+variable "kubeconfig_path" {
+  description = "The path to the kubeconfig file to create"
+  type        = string
+  default     = "../outputs/kubeconfig.yaml"
+}
+
+variable "ip_output_path" {
+  description = "The base filename for the IP files"
+  type        = string
+  default     = "../outputs/ips.yaml"
+}

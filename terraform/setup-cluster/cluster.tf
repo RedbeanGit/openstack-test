@@ -1,6 +1,7 @@
 resource "k0s_cluster" "kubernetes_cluster" {
-  name    = "kubernetes-cluster"
-  version = "1.28.5+k0s.0"
+  depends_on = [openstack_compute_instance_v2.master, openstack_compute_instance_v2.worker]
+  name       = "kubernetes-cluster"
+  version    = "1.28.5+k0s.0"
 
   hosts = concat(
     [for i in range(var.nb_master) : {
@@ -26,7 +27,9 @@ resource "k0s_cluster" "kubernetes_cluster" {
   )
 }
 
-output "kubernetes_cluster_kubeconfig" {
-  value     = k0s_cluster.kubernetes_cluster.kubeconfig
-  sensitive = true
+resource "local_file" "kubeconfig_file" {
+  depends_on = [k0s_cluster.kubernetes_cluster]
+
+  filename = var.kubeconfig_path
+  content  = k0s_cluster.kubernetes_cluster.kubeconfig
 }

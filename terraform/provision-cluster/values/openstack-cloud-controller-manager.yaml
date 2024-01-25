@@ -1,0 +1,5 @@
+secret:
+  enabled: true
+  name: openstack-cloud-controller-config
+  create: false
+nodeSelector:

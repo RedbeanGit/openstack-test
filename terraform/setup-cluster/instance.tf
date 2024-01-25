@@ -9,6 +9,12 @@ resource "openstack_compute_instance_v2" "master" {
   network {
     uuid = openstack_networking_network_v2.private_net.id
   }
+
+  user_data = <<-EOF
+  #!/bin/bash
+  sudo sed -i 's/#DNS=/DNS=10.0.0.3/g' /etc/systemd/resolved.conf
+  sudo systemctl restart systemd-resolved
+  EOF
 }
 
 resource "openstack_compute_instance_v2" "worker" {
